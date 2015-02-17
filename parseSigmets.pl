@@ -5,8 +5,10 @@ use Modern::Perl '2015';
 use Regexp::Grammars;
 use File::Slurp qw(read_file);
 use Data::Dumper;
-$Data::Dumper::Indent   = 3;
+$Data::Dumper::Indent   = 2;
 $Data::Dumper::Sortkeys = 1;
+$Data::Dumper::Purity   = 1;    # fill in the holes for eval
+use Params::Validate qw(:all);
 
 my $file = $ARGV[0];
 
@@ -16,57 +18,11 @@ my $file = $ARGV[0];
 
 my $sigmetFileText = read_file($file);
 
-# my  $latexParser = qr{
-#         <File>
-#
-#         <rule: File>       <[Element]>*
-#
-#         <rule: Element>    <Command> | <Literal>
-#
-#         <rule: Command>    \\  <Literal>  <Options>?  <Args>?
-#
-#         <rule: Options>    \[  <[Option]>+ % (,)  \]
-#
-#         <rule: Args>       \{  <[Element]>*  \}
-#
-#         <rule: Option>     [^][\$&%#_{}~^\s,]+
-#
-#         <rule: Literal>    [^][\$&%#_{}~^\s]+
-#     }xms
-#
-# my $xmlParser = qr{
-# <logfile: parser_log >                                                  # Log description of the grammar
-# <nocontext:>                                                            # Switch off debugging noise
-#
-# <Document>                                                              # Define a document
-# <rule: Document>        <[Element]>*                                    # Contains many elements
-# <rule: Element>         <XMLDecl> | <SelfClosingTag>  | <NormalTag>     # Which can be XML declarations, tags or
-#                                                                         # self closing tags
-# <rule: XMLDecl>         \<\?xml <[Attribute]>* \?\>                     # An xml can have zero or more attributes
-# <rule: SelfClosingTag>  \< <TagName> <[Attribute]>* / \>                # A self closing tag similarly
-# <rule: NormalTag>       \< <TagName> <[Attribute]>* \>                  # A normal tag can also have attributes
-# 			    <TagBody>?                                  #   And a body
-# 			<EndTag(:TagName)>                              # And an end tag named the same
-# <token: TagName>        [^\W\d][^\s\>]+                                 # A Name begins with a non-digit non-non word char
-# <rule: EndTag>		\< / <:TagName> \>                              # An end tag is a tagname in <>s with a leading /
-# <rule: TagBody>         <[NormalTag]>* | <[SelfClosingTag]>* | <Text>   # A tag body may contain text, or more tags
-#                                                                         # note that NormalTags are recursive.
-# <rule: Text>            [^<]+                                           # Text is one or more non < chars
-# <rule: Attribute>       <AttrName> = \" <AttrValue> \"                  # An attribute is a key="value"
-# <token: AttrName>       [^\W\d][^\s]+                                   # Attribute names defined similarly to tag names
-# <token: AttrValue>      [^"]+                                           # Attribute values are series of non " chars
-# }xms;
-
-#<rule: Body>
-#<rule: Phenomenon> |<TC>|<MTW>|<SS>|<VA>
-
-#
-
 # my $roughSigmetParser = qr{
 # <File>						#Define a file
-#   <rule: File>       ( <[Sigmet]>* )  	# That contains junk, or zero or more sigmets [save each one separately]      
+#   <rule: File>       ( <[Sigmet]>* )  	# That contains junk, or zero or more sigmets [save each one separately]
 #   <rule: Sigmet>     	<Header1> <.Body> =
-#     <rule: Header1>    		\w{6} <FIR> \d{6}    
+#     <rule: Header1>    		\w{6} <FIR> \d{6}
 #     <rule: Body>     		.*?
 #     <token: FIR> 	\w{4}  		#FIR is 4 alpha characters
 # }xms;
@@ -74,7 +30,7 @@ my $sigmetFileText = read_file($file);
 my $sigmetParser = qr{
 <logfile: parser_log.txt > # Log description of the grammar 
 <nocontext:> # Switch off debugging noise
-<timeout: 5>  #Stop if processing takes longer than this
+<timeout: 1>  #Stop if processing takes longer than this
 
 <Sigmet>						#Define a file      
   <rule: Sigmet>     <AHeader> <BHeader> <CBody> =
@@ -165,14 +121,14 @@ my $sigmetParser = qr{
     
     <rule: HIntensity> (INTSF | WKN | NC)
 }xms;
-#                                          TOP ETI FL350/420 MOVSLOW ESE NC
-my $parsed_sigmets;                       
+
+my $parsed_sigmets;
 my $sigmetDataPoints = 1;
 
 my $roughSigmetRegex = qr/(\w{6} \s+ \w{4} \s+ \d{6} .*? \=)/xs;
 
 #Do a rough pass through the file to pull out everythig that looks vaguely like
-#a SIGMET.  This will suck up malformed ones too and mess up the following one most likely 
+#a SIGMET.  This will suck up malformed ones too and mess up the following one most likely
 #but it's better than hanging
 my @sigmetsArray = $sigmetFileText =~ /$roughSigmetRegex/ig;
 
@@ -182,43 +138,84 @@ my $sigmet_count      = $sigmetArrayLength / $sigmetDataPoints;
 if ( $sigmetArrayLength >= $sigmetDataPoints ) {
 
     say "Found $sigmet_count sigmets in file";
-    
+
     for ( my $i = 0 ; $i < $sigmetArrayLength ; $i = $i + $sigmetDataPoints ) {
         my $thisSigmetText = $sigmetsArray[$i];
-    
-	#Some are split mid-word, just pull everything back together by deleting new-lines
-	$thisSigmetText =~ s/\n//g;
 
-#        say $thisSigmetText;
+#Some are split mid-word, just pull everything back together by deleting new-lines
+        $thisSigmetText =~ s/\n//g;
+
+        #        say $thisSigmetText;
         if ( $thisSigmetText =~ $sigmetParser ) {
             say "Matched!";
 
-            #---------
-
-            
-
+            #Get a reference to the results hash
             my $parsedSigmetsHashReference = \%/;
-            
-#             print Dumper $parsedSigmetsHashReference;
-# 	    my $link_tags = search_collection( $parsedSigmetsHashReference, "Area", "link" );
+
+#             foreach my $key ( keys %$parsedSigmetsHashReference ) {
+#                 foreach my $key2 ( keys $parsedSigmetsHashReference->{$key} ) {
+#                     say ref $key2;
+#                     say $parsedSigmetsHashReference->{$key}{$key2};
+#                 }
 # 
-# 	    map { say $_->{TagBody}{Text} } @$link_tags;
+#                             
+#             }
+#  say Dumper $parsedSigmetsHashReference;
+     #             #------------------------------------------
+     #             use Storable;
+     #             store( $parsedSigmetsHashReference, "sigmetHash.txt" );
+     #             my $restoredHashref = retrieve("sigmetHash.txt");
+     #
+     #             foreach my $key ( sort keys %$restoredHashref ) {
+     #                 print $restoredHashref->{$key};
+     #             }
+     #
+     #             #------------------------------
+     #             use File::Slurp;
+     #             write_file 'mydump.log', Dumper($parsedSigmetsHashReference);
 
-            
-#             print Dumper $parsedSigmetsHashReference;
+            #------------------------------
 
-            #             #             print Dumper $parsed_sigmets;
-            #             foreach ( sort keys %parsedSigmets ) {
-            #                 print "$_ : $parsedSigmets{$_}\n";
-            #             }
+            # 	    my $copy = dclone($parsedSigmetsHashReference);
+            #            my %test = Dumper $parsedSigmetsHashReference;
+            #            Dumper \%test;
+            #            print Dumper $copy;
+
+            # 	    print Data::Dumper->Dump([\%hash], ["hashname"]), $/;
+
+            #-----------------------------
+            #             $Data::Dumper::Terse = 1;
+            #             my $wtf = Dumper $parsedSigmetsHashReference;
             #
-            #                         foreach my $key ( keys %{parsed_sigmets} ) {
-            #                             say parsed_sigmets{$key};
-            #                         }
-            #             for ( keys %{$parsed_sigmets} ) {
-            #                my $value = $parsed_sigmets->{$_};
-            #                say $value;
+            # # #              say $wtf;
+            # #             my $VAR1;
+            #
+            #             my %copied_hash = %{ eval $wtf };
+            #             say $copied_hash{'Sigmet'};
+            #             eval $wtf;
+
+            #             Dumper \%copied_hash;
+            #             say "$VAR1->{Sigmet}{CBody}{ELocation}{Area}";
+            #             foreach my $k ( sort keys %$VAR1 ) {
+            #                 print "$k\n";
+            #                 foreach my $o ( sort keys %{ $VAR1->{$k} } ) {
+            #                     print "\t$o =>  $VAR1->{$k}{$o}\n";
+            #                 }
+            #                 print "\n";
             #             }
+
+#---------------------------------
+#             #Returns an array reference
+#             my @testArray;
+#
+#             my $link_tags = search_collection( $parsedSigmetsHashReference, "Area", "Point", \@testArray );
+#
+#             if ($link_tags) {
+#                 say @$link_tags;
+#             }
+
+            # 	    map { say $_->{TagBody}{Text} } @$link_tags;
+
         }
         else {
             say "Can't parse SIGMET!" . @!;
@@ -228,26 +225,82 @@ if ( $sigmetArrayLength >= $sigmetDataPoints ) {
         say "------------------------------------";
     }
 }
+my %VAR1 = {
+          'Sigmet' => {
+                        'AHeader' => {
+                                       'FIR' => 'SBBS'
+                                     },
+                        'BHeader' => {
+                                       'SEQUENCE' => '3',
+                                       'firAts' => 'SBBS',
+                                       'firIssuing' => 'SBBS',
+                                       'timeEnd' => '160910',
+                                       'timeStart' => '160640'
+                                     },
+                        'CBody' => {
+                                     'BFirInfo' => {
+                                                     'FIR' => 'SBBS',
+                                                     'longFirName' => 'BRASILIA'
+                                                   },
+                                     'CPhenomenon' => {
+                                                        'TS' => {
+                                                                  'tsAdjective' => [
+                                                                                     'EMBD'
+                                                                                   ],
+                                                                  'tsType' => 'TS'
+                                                                }
+                                                      },
+                                     'DWhen' => 'FCST',
+                                     'ELocation' => [
+                                                      {
+                                                        'Area' => [
+                                                                    {
+                                                                      'Point' => [
+                                                                                   {
+                                                                                     'Latitude' => 'S2118',
+                                                                                     'Longitude' => 'W04703'
+                                                                                   },
+                                                                                   {
+                                                                                     'Latitude' => 'S2014',
+                                                                                     'Longitude' => 'W05034'
+                                                                                   },
+                                                                                   {
+                                                                                     'Latitude' => 'S1712',
+                                                                                     'Longitude' => 'W04958'
+                                                                                   },
+                                                                                   {
+                                                                                     'Latitude' => 'S1659',
+                                                                                     'Longitude' => 'W04705'
+                                                                                   },
+                                                                                   {
+                                                                                     'Latitude' => 'S2118',
+                                                                                     'Longitude' => 'W04703'
+                                                                                   }
+                                                                                 ],
+                                                                      'separator' => '-'
+                                                                    }
+                                                                  ]
+                                                      }
+                                                    ],
+                                     'FLevel' => [
+                                                   {
+                                                     'at' => '410'
+                                                   }
+                                                 ],
+                                     'GMovement' => [
+                                                      {
+                                                        'direction' => 'E',
+                                                        'speed' => '05KT'
+                                                      }
+                                                    ],
+                                     'HIntensity' => 'NC'
+                                   }
+                      }
+        };
+say $VAR1{Sigmet}{CBody}{ELocation};
 
-
-say coordinateToDecimal("S3250");
-say coordinateToDecimal("W06150");
-
-# if ( $sigmetFileText =~ $roughSigmetParser ) {
-#     say "Matched!";
-#
-#     $parsed_sigmets = \%/;
-#
-#     foreach my $key ( keys %$parsed_sigmets ) {
-#         say $parsed_sigmets->{$key};
-#         say "------------------------------------";
-#     }
-#
-#         print Dumper $parsed_sigmets;
-# }
-# else {
-#     die "Can't parse SIGMET!\n" . @!;
-# }
+# say coordinateToDecimal("S3250");
+# say coordinateToDecimal("W06150");
 
 sub coordinateToDecimal {
 
@@ -268,7 +321,8 @@ sub coordinateToDecimal {
             $minutes = substr( $number, 2, 2 );
             $degrees = $degrees / 1;
             $minutes = $minutes / 60;
-	    $signedDegrees = ( $degrees + $minutes );
+            $signedDegrees = ( $degrees + $minutes );
+
             #Latitude is invalid if less than -90  or greater than 90
             $signedDegrees = "" if ( abs($signedDegrees) > 90 );
         }
@@ -277,15 +331,14 @@ sub coordinateToDecimal {
             $minutes = substr( $number, 3, 2 );
             $degrees = $degrees / 1;
             $minutes = $minutes / 60;
-	    $signedDegrees = ( $degrees + $minutes );
+            $signedDegrees = ( $degrees + $minutes );
+
             #Longitude is invalid if less than -180 or greater than 180
             $signedDegrees = "" if ( abs($signedDegrees) > 180 );
         }
         default {
         }
     }
-
-   
 
     given ($declination) {
         when (/S|W/) { $signedDegrees = -($signedDegrees); }
@@ -296,12 +349,20 @@ sub coordinateToDecimal {
     return ($signedDegrees);
 }
 
-
-
 sub search_collection {
+
     #Is it a bug in that the first call to this has no $results parameter?
-    my ( $collection, $target_key, $target_val, $results ) = @_;
-    say ref $collection;
+    my ( $collection, $target_key, $target_val, $results ) = validate_pos(
+        @_,
+        { type => HASHREF },
+        { type => SCALAR },
+        { type => SCALAR },
+        { type => ARRAYREF },
+    );
+
+    #     say 'ref $collection  ' . ref $collection;
+
+    #Search each item in the referenced array
     if ( ref $collection eq "ARRAY" ) {
         for ( @{$collection} ) {
             $results =
@@ -310,18 +371,32 @@ sub search_collection {
         return $results;
     }
 
-    for ( keys %{$collection} ) {
-        my $value = $collection->{$_};
+    if ( ref $collection eq "HASH" ) {
+        for ( keys %{$collection} ) {
+            my $value = $collection->{$_};
 
-        if ( ref($value) eq 'HASH' || ref($value) eq 'ARRAY' ) {
-            $results =
-              search_collection( $value, $target_key, $target_val, $results );
-        }
+            #Search if the item is a hash or an array
+            #say '$collection->{$_}  ' . $value;
+            if ( ref($value) eq 'HASH' || ref($value) eq 'ARRAY' ) {
+                $results = search_collection( $value, $target_key, $target_val,
+                    $results );
+            }
 
-        if ( uc $_ eq uc $target_key ) {
-            push @$results, $collection;
+            #             say "Checking key $_ against target_key $target_key";
+
+            if ( uc $_ eq uc $target_key ) {
+
+                say "yo " . $target_key;
+                say ref $results;
+
+                if ( ref $results eq "ARRAY" ) {
+                    push @$results, $collection;
+                }
+                return $results;
+            }
+
         }
     }
+    say "what?";
 
-    return $results;
 }
