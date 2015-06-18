@@ -102,7 +102,7 @@ sub main {
                                 
                                 <rule: turbAdjective>
                                     (SEV | MOD | OCNL)
-                                
+
                                 <rule: turbType>
                                     TURB
 
@@ -151,7 +151,8 @@ sub main {
                             \d{4}Z  		#Time is 4 digits characters
 
                     <rule: E_Location>
-                        WI (WI)? (AREA)? <[Area]>           #I've seen the WI repeated
+                       (
+                       (WI)+ (AREA)? <[Area]>           #I've seen the WI repeated
                             <rule: Area>
                                 <[Point]>+ % <separator> 
                                 
@@ -164,8 +165,8 @@ sub main {
                                         <token: Latitude>
                                             (N|S)\d{4}
                                         <token: Longitude>
-                                            (E|W)\d{5}
-                    
+                                            (E|W)\d{5}        
+                        )
                     <rule: F_Level> 
                                 ( BTN FL <low=flightLevel> \/ FL <high=flightLevel>
                                 | (CB)? TOP ABV FL<flightLevel>
@@ -217,7 +218,7 @@ sub main {
                             \=
                             )/xs;
 
-    #Do a rough pass through the file to pull out everythig that looks vaguely like
+    #Do a rough pass through the file to pull out everything that looks vaguely like
     #a SIGMET.  This will suck up malformed ones too and mess up the following one most likely
     #but it's better than hanging
     my @sigmetsArray = $sigmetFileText =~ /$roughSigmetRegex/ig;
@@ -234,8 +235,10 @@ sub main {
         {
             my $thisSigmetText = $sigmetsArray[$i];
 
-# #             #Some are split mid-word, just pull everything back together by deleting new-lines
-#             $thisSigmetText =~ s/\R/ /g;
+            #Some sigmets are split mid-word, just pull everything back together by deleting new-lines
+            #Probaby causes as many problems as it fixes
+#             say $thisSigmetText;
+#             $thisSigmetText =~ s/\R//g;
 
             #        say $thisSigmetText;
             if ( $thisSigmetText =~ $sigmetParser ) {
@@ -244,58 +247,7 @@ sub main {
                 #Get a reference to the results hash
                 my $parsedSigmetsHashReference = \%/;
 
-                #             foreach my $key ( keys %$parsedSigmetsHashReference ) {
-                #                 foreach my $key2 ( keys $parsedSigmetsHashReference->{$key} ) {
-                #                     say ref $key2;
-                #                     say $parsedSigmetsHashReference->{$key}{$key2};
-                #                 }
-                #
-                #
-                #             }
-#                 say Dumper $parsedSigmetsHashReference;
-
-                #             #------------------------------------------
-                #             use Storable;
-                #             store( $parsedSigmetsHashReference, "sigmetHash.txt" );
-                #             my $restoredHashref = retrieve("sigmetHash.txt");
-                #
-                #             foreach my $key ( sort keys %$restoredHashref ) {
-                #                 print $restoredHashref->{$key};
-                #             }
-                #
-                #             #------------------------------
-                #             use File::Slurp;
-                #             write_file 'mydump.log', Dumper($parsedSigmetsHashReference);
-
-                #------------------------------
-
-                # 	    my $copy = dclone($parsedSigmetsHashReference);
-                #            my %test = Dumper $parsedSigmetsHashReference;
-                #            Dumper \%test;
-                #            print Dumper $copy;
-
-                # 	    print Data::Dumper->Dump([\%hash], ["hashname"]), $/;
-
-                #-----------------------------
-                #             $Data::Dumper::Terse = 1;
-                #             my $wtf = Dumper $parsedSigmetsHashReference;
-                #
-                # # #              say $wtf;
-                # #             my $VAR1;
-                #
-                #             my %copied_hash = %{ eval $wtf };
-                #             say $copied_hash{'Sigmet'};
-                #             eval $wtf;
-
-                #             Dumper \%copied_hash;
-                #             say "$VAR1->{Sigmet}{C_Body}{E_Location}{Area}";
-                #             foreach my $k ( sort keys %$VAR1 ) {
-                #                 print "$k\n";
-                #                 foreach my $o ( sort keys %{ $VAR1->{$k} } ) {
-                #                     print "\t$o =>  $VAR1->{$k}{$o}\n";
-                #                 }
-                #                 print "\n";
-                #             }
+                say Dumper $parsedSigmetsHashReference;
 
 #                 #---------------------------------
 #                 #Returns an array reference
