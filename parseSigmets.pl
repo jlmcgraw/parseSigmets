@@ -234,8 +234,8 @@ sub main {
         {
             my $thisSigmetText = $sigmetsArray[$i];
 
-#             #Some are split mid-word, just pull everything back together by deleting new-lines
-            $thisSigmetText =~ s/\R//g;
+# #             #Some are split mid-word, just pull everything back together by deleting new-lines
+#             $thisSigmetText =~ s/\R/ /g;
 
             #        say $thisSigmetText;
             if ( $thisSigmetText =~ $sigmetParser ) {
@@ -252,7 +252,7 @@ sub main {
                 #
                 #
                 #             }
-                say Dumper $parsedSigmetsHashReference;
+#                 say Dumper $parsedSigmetsHashReference;
 
                 #             #------------------------------------------
                 #             use Storable;
